@@ -7,15 +7,24 @@ using Unity.Barracuda;
 using OpenCVForUnity.CoreModule;
 using OpenCVForUnity.ImgprocModule;
 using OpenCVForUnity.ObjdetectModule;
+using OpenCVForUnity.Img_hashModule;
 
 using CVRect = OpenCVForUnity.CoreModule.Rect;
 
+
+/// <summary>
+/// Static class script for cv processing
+/// </summary>
 public static class CVProcessor
 {
     private const int SIZE = 224;
-    public const string HSV = "hsv";
-    public const string RGB = "rgb";
-    public const string BGR = "bgr";
+    public enum Mode
+    {
+        HSV,
+        RBG,
+        BGR,
+    }
+
 
     // string[] labels = { "Bicolor", "Calico", "Colorpoint", "Mix", "Orange", "Solid", "Tabby" };
 
@@ -92,7 +101,8 @@ public static class CVProcessor
     /// <param name="input"> the mat of image </param>
     /// <param name="cluster"> the number of major color to get </param>
     /// <param name="mode"> the mode of color pattern </param>
-    public static Color[] ColorKMEANS(Mat input, int cluster, string mode)
+    /// <returns> return list of major colors </returns>
+    public static Color[] ColorKMEANS(Mat input, int cluster, Mode mode)
     {
         Mat pixels = Mat2Vector(input, 3, mode);
         Mat labels = new Mat();
@@ -133,7 +143,7 @@ public static class CVProcessor
     /// <param name="cluster"> the number of major color to get </param>
     /// <param name="mode"> the mode of color pattern </param>
     /// <returns> the mat of result </returns>
-    private static Mat GetCenterResult(Mat center, int cluster, string mode)
+    private static Mat GetCenterResult(Mat center, int cluster, Mode mode)
     {
         Mat colors = new Mat(cluster, 1, CvType.CV_8UC3);
         Mat result = new Mat();
@@ -143,15 +153,15 @@ public static class CVProcessor
             colors.put(i, 0, color);
         }
 
-        if (mode == RGB)
+        if (mode == Mode.RBG)
         {
             result = colors.clone();
         }
-        else if (mode == HSV)
+        if (mode == Mode.HSV)
         {
             Imgproc.cvtColor(colors, result, Imgproc.COLOR_HSV2RGB);
         }
-        else if (mode == BGR)
+        if (mode == Mode.BGR)
         {
             Imgproc.cvtColor(colors, result, Imgproc.COLOR_BGR2RGB);
         }
@@ -166,7 +176,7 @@ public static class CVProcessor
     /// <param name="cluster"> the number of major color to get </param>
     /// <param name="mode"> the mode of color pattern </param>
     /// <returns> the vector mat for kmeans </returns>
-    private static Mat Mat2Vector(Mat input, int cluster, string mode)
+    private static Mat Mat2Vector(Mat input, int cluster, Mode mode)
     {
         
         int width = input.cols();
@@ -174,15 +184,15 @@ public static class CVProcessor
         int count = width * height;
 
         Mat img = new Mat(height, width, CvType.CV_8UC3);
-        if (mode == RGB)
+        if (mode == Mode.RBG)
         {
             img = input.clone();
         }
-        else if (mode == HSV)
+        if (mode == Mode.HSV)
         {
             Imgproc.cvtColor(input, img, Imgproc.COLOR_RGB2HSV);
         }
-        else if (mode == BGR)
+        if (mode == Mode.BGR)
         {
             Imgproc.cvtColor(input, img, Imgproc.COLOR_RGB2BGR);
         }
@@ -228,6 +238,7 @@ public static class CVProcessor
         // dispose tensor
         inputTensor.Dispose();
         outputTensor.Dispose();
+        Debug.Log("Result: " + labels[index] + "\nProb: " + max);
 
         return labels[index];
     }
@@ -265,4 +276,14 @@ public static class CVProcessor
         return new Tensor(1, SIZE, SIZE, 3, channels);
     }
 
+    /// <summary>
+    /// Calculate the image hash used as genotype
+    /// </summary>
+    /// <param name="input"></param>
+    public static void CalculateImageHash(Mat input)
+    {
+        MarrHildrethHash function = MarrHildrethHash.create();
+        Mat imageHash = new Mat();
+        function.compute(input, imageHash);
+    }
 }

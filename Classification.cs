@@ -4,6 +4,7 @@ using System;
 using UnityEngine;
 using UnityEngine.UI;
 using Unity.Barracuda;
+using System.Diagnostics;
 
 
 using OpenCVForUnity.CoreModule;
@@ -13,6 +14,7 @@ using OpenCVForUnity.UnityUtils;
 using OpenCVForUnity.UnityUtils.Helper;
 
 using CVRect = OpenCVForUnity.CoreModule.Rect;
+using Debug = UnityEngine.Debug;
 
 [RequireComponent(typeof(WebCamTextureToMatHelper))]
 public class Classification : MonoBehaviour
@@ -27,22 +29,28 @@ public class Classification : MonoBehaviour
     public RawImage inputImage;
     public RawImage captureImage;
 
+    public Image color_0;
+    public Image color_1;
+    public Image color_2;
+    public Text pattern;
+    public Button recognize;
+
     // WebCam
-    Texture2D webcam_img; // the texture for webcam display
+    Texture2D webcam; // the texture for webcam display
     WebCamTextureToMatHelper webCamTextureToMatHelper;
 
     // OpenCV
-    private string cat_cascade = "haarcascade_frontalcatface_extended.xml";
-    Texture2D cat_img; // the texuture of captured, cropped, normalized cat face
-    CVRect[] cat_box; // the outline of captured cat face
-    CascadeClassifier cascade;
+    private const string catCascadePath = "haarcascade_frontalcatface_extended.xml";
+    Mat cropped;
+    Texture2D catFace; // the texuture of captured, cropped, normalized cat face
+    CVRect[] catFaceBox; // the outline of captured cat face
+    CascadeClassifier catCascade;
 
     // Barracuda
-    public NNModel cat_model;
+    public NNModel catModel;
     Model model;
     IWorker worker;
     string[] labels = { "Bicolor", "Calico", "Colorpoint", "Mix", "Orange", "Solid", "Tabby" };
-    int count;
 
 
     // Use this for initialization
@@ -68,11 +76,11 @@ public class Classification : MonoBehaviour
         }
 
         //////////////////////////////////////////
-        /// Cascade initiation
+        // Cascade initiation
         //////////////////////////////////////////
-        cascade = new CascadeClassifier();
-        cascade.load(Utils.getFilePath(cat_cascade));
-        if (cascade.empty())
+        catCascade = new CascadeClassifier();
+        catCascade.load(Utils.getFilePath(catCascadePath));
+        if (catCascade.empty())
         {
             Debug.LogError("Cannot load cascade");
         }
@@ -83,10 +91,9 @@ public class Classification : MonoBehaviour
 
 
         //////////////////////////////////////////
-        /// Barracuda initiation
+        // Barracuda initiation
         //////////////////////////////////////////
-        ///
-        model = ModelLoader.Load(cat_model);
+        model = ModelLoader.Load(catModel);
         worker = WorkerFactory.CreateWorker(WorkerFactory.Type.ComputePrecompiled, model);
         if (worker == null)
         {
@@ -96,7 +103,8 @@ public class Classification : MonoBehaviour
         {
             Debug.Log("Successfully loaded model");
         }
-        count = 0;
+
+        recognize.GetComponent<Button>().enabled = false;
     }
 
 
@@ -107,11 +115,11 @@ public class Classification : MonoBehaviour
 
         Mat webCamTextureMat = webCamTextureToMatHelper.GetMat();
 
-        webcam_img = new Texture2D(webCamTextureMat.cols(), webCamTextureMat.rows(), TextureFormat.RGBA32, false);
+        webcam = new Texture2D(webCamTextureMat.cols(), webCamTextureMat.rows(), TextureFormat.RGBA32, false);
 
-        Utils.fastMatToTexture2D(webCamTextureMat, webcam_img);
+        Utils.fastMatToTexture2D(webCamTextureMat, webcam);
 
-        gameObject.GetComponent<Renderer>().material.mainTexture = webcam_img;
+        gameObject.GetComponent<Renderer>().material.mainTexture = webcam;
 
         gameObject.transform.localScale = new Vector3(webCamTextureMat.cols(), webCamTextureMat.rows(), 1);
         Debug.Log("Screen.width " + Screen.width + " Screen.height " + Screen.height + " Screen.orientation " + Screen.orientation);
@@ -134,10 +142,10 @@ public class Classification : MonoBehaviour
     {
         Debug.Log("OnWebCamTextureToMatHelperDisposed");
 
-        if (webcam_img != null)
+        if (webcam != null)
         {
-            Texture2D.Destroy(webcam_img);
-            webcam_img = null;
+            Texture2D.Destroy(webcam);
+            webcam = null;
         }
 
         worker.Dispose();
@@ -263,72 +271,82 @@ public class Classification : MonoBehaviour
     }
 
 
-
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ////////////////////////////////////    CUSTOM CODE  ///////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void Update()
     {
         if (webCamTextureToMatHelper.IsPlaying() && webCamTextureToMatHelper.DidUpdateThisFrame())
         {
 
             Mat webcam = webCamTextureToMatHelper.GetMat();
-            cat_box = CVProcessor.DetectCatFace(webcam, cascade);
+            catFaceBox = CVProcessor.DetectCatFace(webcam, catCascade);
 
-            if (cat_box.Length > 0)
+            if (catFaceBox.Length > 0)
             {
-                Debug.Log("Detected cat!");
-                Imgproc.rectangle(webcam, cat_box[0].tl(), cat_box[0].br(), new Scalar(255, 0, 0, 255), 2);
+                Debug.Log("Detected...");
+                Imgproc.rectangle(webcam, catFaceBox[0].tl(), catFaceBox[0].br(), new Scalar(255, 0, 0, 255), 2);
             }
 
             // display with rectangle
-            Utils.fastMatToTexture2D(webcam, webcam_img);
-            inputImage.texture = webcam_img;
+            Utils.fastMatToTexture2D(webcam, this.webcam);
+            inputImage.texture = this.webcam;
         }
     }
 
 
-    public void capture()
+    public void Capture()
     {
         // capture and crop the cat face
         Mat img = webCamTextureToMatHelper.GetMat();
         Mat original = img.clone();
-
-
         Debug.Log("Capturing...");
 
-        if (cat_box.Length < 1)
+        if (catFaceBox.Length < 1)
         {
             Debug.LogWarning("Failed to capture");
         }
         else
         {
             Debug.Log("Captured Cat!");
-            Debug.Log("x:" + cat_box[0].x + ", y:" + cat_box[0].y + ", s:" + cat_box[0].width);
+            Debug.Log("x:" + catFaceBox[0].x + ", y:" + catFaceBox[0].y + ", s:" + catFaceBox[0].width);
+            recognize.GetComponent<Button>().enabled = true;
+
 
             // crop the face out by the index 0 detected cat face and normalize it
-            Mat cropped = CVProcessor.CropCatFace(cat_box, original, 0);
-            // calculate main color via kmeans
-            Color[] colors = CVProcessor.ColorKMEANS(cropped, 3, CVProcessor.HSV);
+            cropped = CVProcessor.CropCatFace(catFaceBox, original, 0);
+            
             // transform it to Texture2D
             Texture2D captured = new Texture2D(cropped.cols(), cropped.rows(), TextureFormat.RGBA32, false);
             Utils.matToTexture2D(cropped, captured);
 
-            cat_img = CVProcessor.Normalize2Tensor(captured);
+            catFace = CVProcessor.Normalize2Tensor(captured);
 
-            captureImage.texture = cat_img;
+            captureImage.texture = catFace;
         }
 
     }
 
-    public void classify()
+    public void Classify()
     {
-        count++;
-        string result = CVProcessor.PredictNeuroNetwork(cat_img, worker, labels);
-        // Processor.save2JPG(cat_img);
-        Debug.Log(count+"######"+result);
+
+        Stopwatch timerCV = new Stopwatch();
+        Stopwatch timerNN = new Stopwatch();
+
+        // calculate main color via kmeans
+        timerCV.Start();
+        Color[] colors = CVProcessor.ColorKMEANS(cropped, 3, CVProcessor.Mode.HSV);
+        timerCV.Stop();
+        // classify the pattern of the cat
+        timerNN.Start();
+        string result = CVProcessor.PredictNeuroNetwork(catFace, worker, labels);
+        timerNN.Stop();
+        // display result and color on to canvas
+        color_0.GetComponent<Image>().color = colors[0];
+        color_1.GetComponent<Image>().color = colors[1];
+        color_2.GetComponent<Image>().color = colors[2];
+        pattern.GetComponent<Text>().text = "This cat is \n" + result;
+
+        Debug.Log("Neural Network Runtime: " + timerNN.ElapsedMilliseconds + "ms\n" 
+            + "K-Means Algorithm Runtime: " + timerCV.ElapsedMilliseconds + "ms\n"
+            + "Result is: " + result);
     }
 
 }
